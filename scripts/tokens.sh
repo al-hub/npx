@@ -36,6 +36,8 @@ Options:
   -c, --cwd PATH        scope to a workspace path
   -a, --all             include all workspaces
   -i, --interval SEC    refresh interval
+  --price-file FILE     optional TSV price file: model <tab> usd_per_million_tokens
+  --default-rate USD    fallback USD per million tokens for estimates
 EOF
 }
 
@@ -43,6 +45,8 @@ STATE_DB="${CCUSAGE_STATE_DB:-$(find_latest_state_db)}"
 TARGET_CWD="${CCUSAGE_CWD:-$PWD}"
 INTERVAL="${CCUSAGE_INTERVAL:-1}"
 SHOW_ALL=0
+PRICE_FILE="${CCUSAGE_PRICE_FILE:-${DEFAULT_CODEX_HOME}/ccusage-prices.tsv}"
+DEFAULT_RATE="${CCUSAGE_DEFAULT_USD_PER_MILLION:-1.00}"
 
 parse_args() {
   while [ "$#" -gt 0 ]; do
@@ -75,6 +79,20 @@ parse_args() {
       --interval=*)
         INTERVAL="${1#*=}"
         ;;
+      --price-file)
+        PRICE_FILE="${2:-}"
+        shift
+        ;;
+      --price-file=*)
+        PRICE_FILE="${1#*=}"
+        ;;
+      --default-rate)
+        DEFAULT_RATE="${2:-1.00}"
+        shift
+        ;;
+      --default-rate=*)
+        DEFAULT_RATE="${1#*=}"
+        ;;
       -*)
         echo "Unknown option: $1" >&2
         exit 1
@@ -95,14 +113,35 @@ EOF
     return
   fi
 
-  python3 - "$STATE_DB" "$TARGET_CWD" "$SHOW_ALL" <<'PY'
+  python3 - "$STATE_DB" "$TARGET_CWD" "$SHOW_ALL" "$PRICE_FILE" "$DEFAULT_RATE" <<'PY'
 import datetime as dt
+import os
 import sqlite3
 import sys
 
 db_path = sys.argv[1]
 target_cwd = sys.argv[2]
 show_all = sys.argv[3] == "1"
+price_file = sys.argv[4]
+default_rate = float(sys.argv[5] or "1.00")
+
+def load_prices(path):
+    prices = {}
+    if not path or not os.path.isfile(path):
+        return prices
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            try:
+                prices[parts[0].lower()] = float(parts[1])
+            except ValueError:
+                continue
+    return prices
 
 def fmt_tokens(value):
     value = int(value or 0)
@@ -117,6 +156,15 @@ def fmt_ts(value):
         return "-"
     return dt.datetime.fromtimestamp(int(value)).strftime("%Y-%m-%d %H:%M:%S")
 
+def fmt_cost(value):
+    return f"${value:.2f}"
+
+def cost_for(row, prices):
+    tokens = int(row["tokens_used"] or 0)
+    model = (row["model"] or "").lower()
+    rate = prices.get(model, default_rate)
+    return tokens * rate / 1_000_000.0, model not in prices
+
 def clean(text, width):
     text = " ".join(str(text or "").split())
     if len(text) <= width:
@@ -126,6 +174,7 @@ def clean(text, width):
 con = sqlite3.connect(db_path)
 con.row_factory = sqlite3.Row
 cur = con.cursor()
+prices = load_prices(price_file)
 
 where = ""
 params = []
@@ -156,6 +205,13 @@ if not rows and where:
     scope = "all workspaces"
 
 total = sum(int(row["tokens_used"] or 0) for row in rows)
+total_cost = 0.0
+estimated_rows = 0
+for row in rows:
+    cost, estimated = cost_for(row, prices)
+    total_cost += cost
+    if estimated:
+        estimated_rows += 1
 latest = rows[0] if rows else None
 
 print("[Tokens] live Codex token monitor")
@@ -163,6 +219,8 @@ print(f"[DB] {db_path}")
 print(f"[Scope] {scope}")
 print(f"[Sessions] {len(rows)}")
 print(f"[Total Tokens] {fmt_tokens(total)}")
+print(f"[Est Cost] {fmt_cost(total_cost)}")
+print(f"[Rate] model TSV when available, otherwise ${default_rate:.2f}/1M tokens")
 
 if not latest:
     print("[Current] no sessions found")
@@ -173,16 +231,22 @@ print("[Current Session]")
 print(f"  id      : {latest['id']}")
 print(f"  model   : {latest['model'] or 'Unknown'}")
 print(f"  tokens  : {fmt_tokens(latest['tokens_used'])}")
+latest_cost, latest_estimated = cost_for(latest, prices)
+print(f"  est cost: {fmt_cost(latest_cost)}")
 print(f"  updated : {fmt_ts(latest['updated_at'])}")
 print(f"  cwd     : {latest['cwd']}")
 print(f"  title   : {clean(latest['title'], 72)}")
 
 print("")
 print("Recent sessions")
-print(f"{'Tokens':>10} {'Updated':19} Title")
-print(f"{'-' * 10} {'-' * 19} {'-' * 48}")
+print(f"{'Tokens':>10} {'Est Cost':>10} {'Updated':19} Title")
+print(f"{'-' * 10} {'-' * 10} {'-' * 19} {'-' * 48}")
 for row in rows[:5]:
-    print(f"{fmt_tokens(row['tokens_used']):>10} {fmt_ts(row['updated_at']):19} {clean(row['title'], 48)}")
+    row_cost, _ = cost_for(row, prices)
+    print(f"{fmt_tokens(row['tokens_used']):>10} {fmt_cost(row_cost):>10} {fmt_ts(row['updated_at']):19} {clean(row['title'], 48)}")
+
+if estimated_rows:
+    print(f"[Note] {estimated_rows} session(s) used the fallback estimate rate.")
 
 print("")
 print("[Quit] press q")

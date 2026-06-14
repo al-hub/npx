@@ -67,10 +67,13 @@ Live screens such as `monitor`, `ccusage --watch`, and `tokens` exit when you pr
 - 기본적으로 현재 `cwd`와 같은 워크스페이스 세션만 보여주며, 없으면 전체 세션으로 fallback한다.
 - `--all` 옵션을 주면 전체 세션을 표시한다.
 
-비용 표시:
+비용 추정:
 
-- 기본 DB에는 모델별 가격 정보가 없으므로 비용은 `n/a`일 수 있다.
-- 비용을 표시하려면 `~/.codex/ccusage-prices.tsv` 또는 `CCUSAGE_PRICE_FILE`을 사용한다.
+- Codex DB에는 입력/출력 토큰 분리가 없으므로 비용은 총 토큰 기반 추정치다.
+- 가격표 파일이 있으면 모델별 단가를 우선 사용한다.
+- 가격표가 없으면 기본 추정 단가 `1.00 USD / 1M tokens`를 사용한다.
+- 기본 단가는 `CCUSAGE_DEFAULT_USD_PER_MILLION` 또는 `--default-rate`로 바꿀 수 있다.
+- 가격표를 사용하려면 `~/.codex/ccusage-prices.tsv` 또는 `CCUSAGE_PRICE_FILE`을 설정한다.
 - 파일 형식은 `model<TAB>usd_per_million_tokens`다.
 
 예시:

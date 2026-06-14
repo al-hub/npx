@@ -45,6 +45,7 @@ Options:
   -i, --interval SEC    refresh interval for watch mode
   -w, --watch           live refresh
   --price-file FILE     optional TSV price file: model <tab> usd_per_million_tokens
+  --default-rate USD    fallback USD per million tokens for estimates
 EOF
 }
 
@@ -54,6 +55,7 @@ INTERVAL="${CCUSAGE_INTERVAL:-1}"
 TARGET_CWD="${CCUSAGE_CWD:-$PWD}"
 STATE_DB="${CCUSAGE_STATE_DB:-$(find_latest_state_db)}"
 PRICE_FILE="${CCUSAGE_PRICE_FILE:-${DEFAULT_CODEX_HOME}/ccusage-prices.tsv}"
+DEFAULT_RATE="${CCUSAGE_DEFAULT_USD_PER_MILLION:-1.00}"
 
 parse_args() {
   while [ "$#" -gt 0 ]; do
@@ -96,6 +98,13 @@ parse_args() {
       --price-file=*)
         PRICE_FILE="${1#*=}"
         ;;
+      --default-rate)
+        DEFAULT_RATE="${2:-1.00}"
+        shift
+        ;;
+      --default-rate=*)
+        DEFAULT_RATE="${1#*=}"
+        ;;
       --)
         shift
         break
@@ -126,7 +135,7 @@ EOF
     return
   fi
 
-  python3 - "$STATE_DB" "$TARGET_CWD" "$PRICE_FILE" "$SHOW_ALL" <<'PY'
+  python3 - "$STATE_DB" "$TARGET_CWD" "$PRICE_FILE" "$SHOW_ALL" "$DEFAULT_RATE" <<'PY'
 import datetime as dt
 import os
 import sqlite3
@@ -136,6 +145,7 @@ db_path = sys.argv[1]
 target_cwd = sys.argv[2]
 price_file = sys.argv[3]
 show_all = sys.argv[4] == "1"
+default_rate = float(sys.argv[5] or "1.00")
 
 def load_prices(path):
     prices = {}
@@ -169,9 +179,7 @@ def fmt_tokens(value):
         return f"{value / 1_000:.1f}K"
     return str(value)
 
-def fmt_cost(value, known):
-    if not known:
-        return "n/a"
+def fmt_cost(value):
     return f"${value:.2f}"
 
 def fmt_ts(value):
@@ -210,7 +218,7 @@ if not rows:
 
 total_tokens = 0
 total_cost = 0.0
-known_cost = False
+estimated_rows = 0
 
 print(f"[ccusage] {db_path}")
 print(f"[Scope] {scope}")
@@ -227,7 +235,8 @@ cost_w = 12
 updated_w = 16
 title_w = 46
 
-print(f"{'Session':{session_w}} {'Model':{model_w}} {'Tokens':>{tokens_w}} {'Cost':>{cost_w}} {'Updated':{updated_w}} Title")
+print(f"[Rate] model TSV when available, otherwise ${default_rate:.2f}/1M tokens estimate")
+print(f"{'Session':{session_w}} {'Model':{model_w}} {'Tokens':>{tokens_w}} {'Est Cost':>{cost_w}} {'Updated':{updated_w}} Title")
 print(f"{'-' * session_w} {'-' * model_w} {'-' * tokens_w} {'-' * cost_w} {'-' * updated_w} {'-' * title_w}")
 
 for row in rows:
@@ -237,16 +246,16 @@ for row in rows:
     total_tokens += tokens
     updated = fmt_ts(row["updated_at"])
     title = clean(row["title"] or "", title_w)
-    rate = prices.get((row["model"] or "").lower())
-    if rate is not None:
-        cost = tokens * rate / 1_000_000.0
-        total_cost += cost
-        known_cost = True
-    else:
-        cost = None
-    print(f"{session_id:{session_w}} {model:{model_w}} {fmt_tokens(tokens):>{tokens_w}} {fmt_cost(cost, rate is not None):>{cost_w}} {updated:{updated_w}} {title}")
+    rate = prices.get((row["model"] or "").lower(), default_rate)
+    if (row["model"] or "").lower() not in prices:
+        estimated_rows += 1
+    cost = tokens * rate / 1_000_000.0
+    total_cost += cost
+    print(f"{session_id:{session_w}} {model:{model_w}} {fmt_tokens(tokens):>{tokens_w}} {fmt_cost(cost):>{cost_w}} {updated:{updated_w}} {title}")
 
-print(f"{'TOTAL':{session_w}} {str(len(rows)) + ' sessions':{model_w}} {fmt_tokens(total_tokens):>{tokens_w}} {fmt_cost(total_cost, known_cost):>{cost_w}} {'-':{updated_w}} {'-'}")
+print(f"{'TOTAL':{session_w}} {str(len(rows)) + ' sessions':{model_w}} {fmt_tokens(total_tokens):>{tokens_w}} {fmt_cost(total_cost):>{cost_w}} {'-':{updated_w}} {'-'}")
+if estimated_rows:
+    print(f"[Note] {estimated_rows} row(s) used the fallback estimate rate.")
 PY
 }
 
