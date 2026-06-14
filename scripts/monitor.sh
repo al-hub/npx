@@ -11,10 +11,6 @@ show_cursor() {
   printf '\033[?25h'
 }
 
-clear_line() {
-  printf '\033[2K\r'
-}
-
 bytes_to_gb() {
   awk -v bytes="${1:-0}" 'BEGIN { printf "%.1f", bytes / 1024 / 1024 / 1024 }'
 }
@@ -199,18 +195,15 @@ render_once() {
     net_tx_rate=0
   fi
 
-  clear_line
-  printf '[CPU] %s %s%% (%s GHz / %s GHz)\n' "${cpu_model_name:-Unknown}" "$(format_percent "$cpu_usage")" "$cpu_cur" "$cpu_max"
-  clear_line
-  printf '[Memory] %s %s%% (%s GB / %sGB)\n' "${mem_model:-Unknown}" "$(format_percent "$mem_usage")" "$(bytes_to_gb "$mem_used")" "$(bytes_to_gb "$mem_total")"
-  clear_line
-  printf '[SSD] %s %s%% (%sGB / %sGB)\n' "${disk_model:-Unknown}" "$(format_int_percent "$disk_usage")" "$(bytes_to_gb "$disk_used")" "$(bytes_to_gb_whole "$disk_total")"
-  clear_line
-  printf '[Nework] %s rx (%s B/S), tx (%s B/s)\n' "${net_iface:-Unknown}" "$(bytes_to_b "$net_rx_rate")" "$(bytes_to_b "$net_tx_rate")"
+  printf '[CPU] %s %5.1f%% (%3.1f GHz / %3.1f GHz)\n' "${cpu_model_name:-Unknown}" "$(format_percent "$cpu_usage")" "$cpu_cur" "$cpu_max"
+  printf '[Memory] %s %5.1f%% (%3.1f GB / %3.1fGB)\n' "${mem_model:-Unknown}" "$(format_percent "$mem_usage")" "$(bytes_to_gb "$mem_used")" "$(bytes_to_gb "$mem_total")"
+  printf '[SSD] %s %3d%% (%3.1fGB / %4.0fGB)\n' "${disk_model:-Unknown}" "$(format_int_percent "$disk_usage")" "$(bytes_to_gb "$disk_used")" "$(bytes_to_gb_whole "$disk_total")"
+  printf '[Nework] %s rx (%5.1f B/S), tx (%5.1f B/s)\n' "${net_iface:-Unknown}" "$(bytes_to_b "$net_rx_rate")" "$(bytes_to_b "$net_tx_rate")"
 }
 
 trap 'show_cursor; printf "\n"' INT TERM EXIT
 
+printf '\033[2J\033[H'
 hide_cursor
 
 while true; do
