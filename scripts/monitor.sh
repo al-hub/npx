@@ -130,7 +130,7 @@ mem_usage_info() {
       printf "%.1f", (100 * used / total)
     }
   }')"
-  printf '%s|%s|%s|%s\n' "$usage" "$used" "$total" "Unknown"
+  printf '%s|%s|%s|%s\n' "$usage" "$used" "$total" "System Memory"
 }
 
 system_vendor() {
@@ -149,6 +149,14 @@ board_name() {
   cat /sys/devices/virtual/dmi/id/board_name 2>/dev/null || echo "Unknown"
 }
 
+bios_version() {
+  cat /sys/devices/virtual/dmi/id/bios_version 2>/dev/null || echo "Unknown"
+}
+
+bios_vendor() {
+  cat /sys/devices/virtual/dmi/id/bios_vendor 2>/dev/null || echo "Unknown"
+}
+
 root_disk_info() {
   local source fs_type size used avail usep model root_source
   source="$(df -P / 2>/dev/null | awk 'NR == 2 {print $1; exit}')"
@@ -159,7 +167,7 @@ root_disk_info() {
   usep="$(df -P / 2>/dev/null | awk 'NR == 2 {gsub(/%/, "", $5); print $5; exit}')"
 
   if [[ "$source" == /dev/* ]] && command -v lsblk >/dev/null 2>&1; then
-    model="$(lsblk -dn -o MODEL "$source" 2>/dev/null | awk 'NR == 1 {print; exit}' || true)"
+    model="$(lsblk -dn -o VENDOR,MODEL "$source" 2>/dev/null | awk 'NR == 1 {gsub(/^[ \t]+|[ \t]+$/, "", $0); print; exit}' || true)"
   else
     model=""
   fi
@@ -179,14 +187,29 @@ gpu_info() {
     return
   fi
 
-  printf 'Unknown|0.0|0|0\n'
+  if [ -d /sys/class/drm ] && ls /sys/class/drm/card*/device/uevent >/dev/null 2>&1; then
+    local gpu_name
+    gpu_name="$(for f in /sys/class/drm/card*/device/uevent; do [ -r "$f" ] || continue; awk -F= '/PCI_ID=/ {print $2; exit}' "$f"; done | head -n 1)"
+    if [ -n "${gpu_name:-}" ]; then
+      printf '%s|0.0|0|0\n' "$gpu_name"
+      return
+    fi
+  fi
+
+  printf 'No GPU detected|0.0|0|0\n'
 }
 
 net_info() {
   local iface rx1 tx1
-  iface="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}' || true)"
-  if [ -z "${iface:-}" ]; then
-    iface="$(ip -o link show 2>/dev/null | awk -F': ' '$2 != "lo" {print $2; exit}' || true)"
+  if [ -d /sys/class/net ]; then
+    iface="$(for f in /sys/class/net/*; do
+      [ -e "$f" ] || continue
+      case "${f##*/}" in
+        lo) continue ;;
+      esac
+      printf '%s\n' "${f##*/}"
+      exit
+    done)"
   fi
   if [ -z "${iface:-}" ] && [ -r /proc/net/route ]; then
     iface="$(awk '$2 == "00000000" {print $1; exit}' /proc/net/route)"
@@ -195,7 +218,7 @@ net_info() {
     iface="$(awk -F'[: ]+' 'NR > 2 && $1 != "lo" {print $1; exit}' /proc/net/dev)"
   fi
   if [ -z "${iface:-}" ]; then
-    printf 'Unknown|0|0\n'
+    printf 'No network interface|0|0\n'
     return
   fi
 
@@ -213,7 +236,7 @@ cpu_sample() {
 }
 
 render_once() {
-  local system_name board_name_value cpu_model_name cpu_usage cpu_cur cpu_max cpu_cores cpu_threads
+  local system_name board_name_value bios_name cpu_model_name cpu_usage cpu_cur cpu_max cpu_cores cpu_threads
   local mem_usage mem_used mem_total mem_model
   local gpu_model_name gpu_usage gpu_used gpu_total
   local disk_model disk_usage disk_used disk_total disk_fs disk_source
@@ -222,6 +245,7 @@ render_once() {
 
   system_name="$(join_nonempty "$(system_vendor)" "$(system_product)")"
   board_name_value="$(join_nonempty "$(board_vendor)" "$(board_name)")"
+  bios_name="$(join_nonempty "$(bios_vendor)" "$(bios_version)")"
   cpu_model_name="$(cpu_model)"
   cpu_cur="$(cpu_current_ghz)"
   cpu_max="$(cpu_max_ghz)"
@@ -256,6 +280,7 @@ render_once() {
   fi
 
   printf '[System] %s / %s\n' "${system_name:-Unknown}" "${board_name_value:-Unknown}"
+  printf '[BIOS] %s\n' "${bios_name:-Unknown}"
   printf '[CPU] %s %5.1f%% (%3.1f GHz / %3.1f GHz)\n' "${cpu_model_name:-Unknown}" "$(format_percent "$cpu_usage")" "$cpu_cur" "$cpu_max"
   printf '[CPU-Cores] %sC / %sT\n' "${cpu_cores:-0}" "${cpu_threads:-0}"
   printf '[Memory] %s %5.1f%% (%3.1f GB / %3.1fGB)\n' "${mem_model:-Unknown}" "$(format_percent "$mem_usage")" "$(bytes_to_gb "$mem_used")" "$(bytes_to_gb "$mem_total")"
@@ -265,7 +290,7 @@ render_once() {
     printf '[GPU] %s VRAM unavailable\n' "${gpu_model_name:-Unknown}"
   fi
   printf '[SSD] %s %3d%% (%3.1fGB / %4.0fGB)\n' "${disk_model:-Unknown}" "$(format_int_percent "$disk_usage")" "$(bytes_to_gb "$disk_used")" "$(bytes_to_gb_whole "$disk_total")"
-  printf '[Nework] %s rx (%5.1f B/S), tx (%5.1f B/s)\n' "${net_iface:-Unknown}" "$(bytes_to_b "$net_rx_rate")" "$(bytes_to_b "$net_tx_rate")"
+  printf '[Network] %s rx (%5.1f B/S), tx (%5.1f B/s)\n' "${net_iface:-Unknown}" "$(bytes_to_b "$net_rx_rate")" "$(bytes_to_b "$net_tx_rate")"
 }
 
 trap 'show_cursor; printf "\n"' INT TERM EXIT
