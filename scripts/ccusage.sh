@@ -2,14 +2,31 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEFAULT_CODEX_HOME="${HOME:-$ROOT_DIR/.local-home}/.codex"
 
-DEFAULT_TOKEN_LOG="${HOME:-$ROOT_DIR/.local-home}/.al/token-usage.log"
-DEFAULT_PRICE_FILE="${HOME:-$ROOT_DIR/.local-home}/.al/ccusage-prices.tsv"
+find_latest_state_db() {
+  local db
 
-TOKEN_LOG_FILE="${TOKEN_LOG_FILE:-$DEFAULT_TOKEN_LOG}"
-PRICE_FILE="${CCUSAGE_PRICE_FILE:-$DEFAULT_PRICE_FILE}"
-INTERVAL="${TOKEN_INTERVAL:-1}"
-WATCH=0
+  if [ -n "${CCUSAGE_STATE_DB:-}" ] && [ -r "${CCUSAGE_STATE_DB}" ]; then
+    printf '%s\n' "${CCUSAGE_STATE_DB}"
+    return
+  fi
+
+  if [ -d "$DEFAULT_CODEX_HOME" ]; then
+    db="$(ls -1t "$DEFAULT_CODEX_HOME"/state_*.sqlite 2>/dev/null | head -n1 || true)"
+    if [ -n "$db" ] && [ -r "$db" ]; then
+      printf '%s\n' "$db"
+      return
+    fi
+  fi
+
+  if [ -r "$DEFAULT_CODEX_HOME/state_5.sqlite" ]; then
+    printf '%s\n' "$DEFAULT_CODEX_HOME/state_5.sqlite"
+    return
+  fi
+
+  printf '%s\n' ""
+}
 
 show_help() {
   cat <<'EOF'
@@ -18,293 +35,27 @@ ccusage-style session usage summary
 Usage:
   npx github:al-hub/npx ccusage
   npx github:al-hub/npx ccusage --watch
+  npx github:al-hub/npx ccusage --all
   npx github:al-hub/npx tokens
 
 Options:
-  -f, --file FILE       usage log file
+  -d, --db FILE         codex state sqlite file
+  -c, --cwd PATH        scope to a workspace path
+  -a, --all             show all sessions
   -i, --interval SEC    refresh interval for watch mode
   -w, --watch           live refresh
-  --price-file FILE     optional model price table
+  --price-file FILE     optional TSV price file: model <tab> usd_per_million_tokens
 EOF
 }
 
-hide_cursor() {
-  printf '\033[?25l'
-}
-
-show_cursor() {
-  printf '\033[?25h'
-}
-
-format_count() {
-  awk -v value="${1:-0}" 'BEGIN {
-    value += 0
-    if (value < 0) {
-      value = 0
-    }
-    if (value >= 1000000) {
-      printf "%.1fM", value / 1000000
-    } else if (value >= 1000) {
-      printf "%.1fK", value / 1000
-    } else {
-      printf "%.0f", value
-    }
-  }'
-}
-
-format_cost() {
-  awk -v value="${1:-0}" -v known="${2:-0}" 'BEGIN {
-    if (known + 0 == 0) {
-      printf "n/a"
-      exit
-    }
-    value += 0
-    if (value < 0) {
-      printf "n/a"
-      exit
-    }
-    printf "$%.2f", value
-  }'
-}
-
-load_price_table() {
-  awk -v price_file="$PRICE_FILE" '
-    function trim(value) {
-      sub(/^[ \t]+/, "", value)
-      sub(/[ \t]+$/, "", value)
-      return value
-    }
-
-    function extract_string(line, key,    pattern, value) {
-      pattern = "\"" key "\"[[:space:]]*:[[:space:]]*\"[^\"]*\""
-      if (match(line, pattern)) {
-        value = substr(line, RSTART, RLENGTH)
-        sub(/^.*:[[:space:]]*"/, "", value)
-        sub(/"$/, "", value)
-        return value
-      }
-      return ""
-    }
-
-    BEGIN {
-      if (price_file != "" && (getline line < price_file) >= 0) {
-        do {
-          if (line ~ /^[[:space:]]*$/ || line ~ /^[[:space:]]*#/) {
-            continue
-          }
-          split(line, parts, /\t/)
-          if (length(parts[1]) > 0 && length(parts[2]) > 0 && length(parts[3]) > 0) {
-            key = tolower(trim(parts[1]))
-            price_in[key] = parts[2] + 0
-            price_out[key] = parts[3] + 0
-          }
-        } while ((getline line < price_file) > 0)
-        close(price_file)
-      }
-    }
-
-    function extract_number(line, key,    pattern, value) {
-      pattern = "\"" key "\"[[:space:]]*:[[:space:]]*(-?[0-9]+([.][0-9]+)?)"
-      if (match(line, pattern)) {
-        value = substr(line, RSTART, RLENGTH)
-        sub(/^.*:[[:space:]]*/, "", value)
-        return value + 0
-      }
-      return -1
-    }
-
-    function choose_string(line, keys,    i, n, value) {
-      n = split(keys, arr, /\|/)
-      for (i = 1; i <= n; i++) {
-        value = extract_string(line, arr[i])
-        if (value != "") {
-          return value
-        }
-      }
-      return ""
-    }
-
-    function choose_number(line, keys,    i, n, value) {
-      n = split(keys, arr, /\|/)
-      for (i = 1; i <= n; i++) {
-        value = extract_number(line, arr[i])
-        if (value >= 0) {
-          return value
-        }
-      }
-      return -1
-    }
-
-    function maybe_cost(model, input, output,    key) {
-      key = tolower(model)
-      if (key in price_in && key in price_out) {
-        return (input * price_in[key] + output * price_out[key]) / 1000000.0
-      }
-      return -1
-    }
-
-    {
-      seq += 1
-
-      session = choose_string($0, "session_id|sessionId|chat_session_id|chatSessionId|conversation_id|conversationId|run_id|thread_id")
-      if (session == "") {
-        session = "default"
-      }
-
-      model = choose_string($0, "model|model_name|modelName|engine")
-      if (model == "") {
-        model = "Unknown"
-      }
-
-      ts = choose_string($0, "created_at|createdAt|timestamp|time|date|ts")
-      if (ts == "") {
-        ts = "-"
-      }
-
-      input = choose_number($0, "input_tokens|prompt_tokens|inputTokens|promptTokens")
-      output = choose_number($0, "output_tokens|completion_tokens|outputTokens|completionTokens")
-      total = choose_number($0, "total_tokens|tokens|totalTokens")
-      cost = choose_number($0, "cost_usd|usd|cost")
-
-      if (input >= 0) {
-        sum_input[session] += input
-      }
-
-      if (output >= 0) {
-        sum_output[session] += output
-      }
-
-      if (total >= 0) {
-        sum_total[session] += total
-      } else if (input >= 0 || output >= 0) {
-        sum_total[session] += (input > 0 ? input : 0) + (output > 0 ? output : 0)
-      }
-
-      if (cost >= 0) {
-        sum_cost[session] += cost
-        seen_cost[session] = 1
-      } else {
-        estimate = maybe_cost(model, (input > 0 ? input : 0), (output > 0 ? output : 0))
-        if (estimate >= 0) {
-          sum_cost[session] += estimate
-          seen_cost[session] = 1
-        }
-      }
-
-      entries[session] += 1
-      if (!(session in first_seq)) {
-        first_seq[session] = seq
-        first_ts[session] = ts
-        first_model[session] = model
-      }
-      last_seq[session] = seq
-      last_ts[session] = ts
-      last_model[session] = model
-
-      if (!(session in session_index)) {
-        session_index[session] = ++session_count
-      }
-    }
-
-    END {
-      for (session in session_index) {
-        order = last_seq[session]
-        printf "%d|%s|%s|%d|%d|%d|%.6f|%d|%s|%s|%d|%s\n",
-          order,
-          session,
-          last_model[session],
-          sum_input[session] + 0,
-          sum_output[session] + 0,
-          sum_total[session] + 0,
-          sum_cost[session] + 0,
-          entries[session] + 0,
-          first_ts[session],
-          last_ts[session],
-          seen_cost[session] + 0,
-          first_model[session]
-      }
-    }
-  ' "$TOKEN_LOG_FILE" | sort -t'|' -k1,1nr -k2,2
-}
-
-render_summary() {
-  local rows footer total_sessions total_input total_output total_tokens total_cost
-
-  if [ ! -r "$TOKEN_LOG_FILE" ]; then
-    printf '[ccusage] %s\n' "$TOKEN_LOG_FILE"
-    printf '[Status] waiting for log file\n'
-    printf '[Hint] JSONL lines should include session_id, token counts, and optional cost_usd\n'
-    return
-  fi
-
-  rows="$(load_price_table)"
-  if [ -z "$rows" ]; then
-    printf '[ccusage] %s\n' "$TOKEN_LOG_FILE"
-    printf '[Status] no usage rows found\n'
-    return
-  fi
-
-  footer="$(printf '%s\n' "$rows" | awk -F'|' '
-    {
-      sessions += 1
-      input += $4
-      output += $5
-      total += $6
-      cost += $7
-      if ($11 > 0) {
-        seen_cost += 1
-      }
-    }
-    END {
-      printf "%d|%d|%d|%d|%.6f|%d\n", sessions + 0, input + 0, output + 0, total + 0, cost + 0, seen_cost + 0
-    }
-  ')"
-
-  IFS='|' read -r total_sessions total_input total_output total_tokens total_cost _seen_cost <<< "$footer"
-
-  printf '[ccusage] %s\n' "$TOKEN_LOG_FILE"
-  printf '%-18s %-18s %9s %9s %9s %12s %19s %19s\n' "Session" "Model" "Input" "Output" "Total" "Cost" "First" "Last"
-  printf '%-18s %-18s %9s %9s %9s %12s %19s %19s\n' "------------------" "------------------" "---------" "---------" "---------" "------------" "-------------------" "-------------------"
-
-  while IFS='|' read -r _order session model input output total cost entries first_ts last_ts seen_cost first_model; do
-    [ -n "$session" ] || continue
-    printf '%-18.18s %-18.18s %9s %9s %9s %12s %19.19s %19.19s\n' \
-      "$session" \
-      "$model" \
-      "$(format_count "$input")" \
-      "$(format_count "$output")" \
-      "$(format_count "$total")" \
-      "$(format_cost "$cost" "$seen_cost")" \
-      "$first_ts" \
-      "$last_ts"
-  done <<< "$rows"
-
-  printf '%-18s %-18s %9s %9s %9s %12s %19s %19s\n' \
-    "TOTAL" \
-    "$total_sessions sessions" \
-    "$(format_count "$total_input")" \
-    "$(format_count "$total_output")" \
-    "$(format_count "$total_tokens")" \
-    "$(format_cost "$total_cost" "${_seen_cost:-0}")" \
-    "-" \
-    "-"
-}
-
-render_watch() {
-  trap 'show_cursor; printf "\n"' INT TERM EXIT
-  printf '\033[2J\033[H'
-  hide_cursor
-
-  while true; do
-    printf '\033[H'
-    render_summary
-    sleep "$INTERVAL"
-  done
-}
+WATCH=0
+SHOW_ALL=0
+INTERVAL="${CCUSAGE_INTERVAL:-1}"
+TARGET_CWD="${CCUSAGE_CWD:-$PWD}"
+STATE_DB="${CCUSAGE_STATE_DB:-$(find_latest_state_db)}"
+PRICE_FILE="${CCUSAGE_PRICE_FILE:-${DEFAULT_CODEX_HOME}/ccusage-prices.tsv}"
 
 parse_args() {
-  local positional=()
-
   while [ "$#" -gt 0 ]; do
     case "$1" in
       -h|--help|help)
@@ -314,12 +65,22 @@ parse_args() {
       -w|--watch|watch)
         WATCH=1
         ;;
-      -f|--file)
-        TOKEN_LOG_FILE="${2:-}"
+      -a|--all)
+        SHOW_ALL=1
+        ;;
+      -d|--db|--state-db)
+        STATE_DB="${2:-}"
         shift
         ;;
-      --file=*)
-        TOKEN_LOG_FILE="${1#*=}"
+      --db=*|--state-db=*)
+        STATE_DB="${1#*=}"
+        ;;
+      -c|--cwd)
+        TARGET_CWD="${2:-}"
+        shift
+        ;;
+      --cwd=*)
+        TARGET_CWD="${1#*=}"
         ;;
       -i|--interval)
         INTERVAL="${2:-1}"
@@ -337,10 +98,6 @@ parse_args() {
         ;;
       --)
         shift
-        while [ "$#" -gt 0 ]; do
-          positional+=("$1")
-          shift
-        done
         break
         ;;
       -*)
@@ -348,24 +105,163 @@ parse_args() {
         exit 1
         ;;
       *)
-        positional+=("$1")
+        if [ -z "${STATE_DB:-}" ] && [ -r "$1" ]; then
+          STATE_DB="$1"
+        elif [ -z "${TARGET_CWD:-}" ]; then
+          TARGET_CWD="$1"
+        fi
         ;;
     esac
     shift
   done
-
-  if [ "${#positional[@]}" -ge 1 ] && [ -n "${positional[0]:-}" ]; then
-    TOKEN_LOG_FILE="${positional[0]}"
-  fi
-  if [ "${#positional[@]}" -ge 2 ] && [ -n "${positional[1]:-}" ]; then
-    INTERVAL="${positional[1]}"
-  fi
 }
+
+render_once() {
+  if [ -z "${STATE_DB:-}" ] || [ ! -r "$STATE_DB" ]; then
+    cat <<EOF
+[ccusage] ${STATE_DB:-unknown}
+[Status] no Codex state database found
+[Hint] set CCUSAGE_STATE_DB or place a state_*.sqlite file under ~/.codex
+EOF
+    return
+  fi
+
+  python3 - "$STATE_DB" "$TARGET_CWD" "$PRICE_FILE" "$SHOW_ALL" <<'PY'
+import datetime as dt
+import os
+import sqlite3
+import sys
+
+db_path = sys.argv[1]
+target_cwd = sys.argv[2]
+price_file = sys.argv[3]
+show_all = sys.argv[4] == "1"
+
+def load_prices(path):
+    prices = {}
+    if not path or not os.path.isfile(path):
+        return prices
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+      for raw in handle:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+          continue
+        parts = line.split()
+        if len(parts) < 2:
+          continue
+        model = parts[0].strip().lower()
+        rate = None
+        for token in parts[1:]:
+          try:
+            rate = float(token)
+            break
+          except ValueError:
+            continue
+        if rate is not None:
+          prices[model] = rate
+    return prices
+
+def fmt_tokens(value):
+    value = int(value or 0)
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}K"
+    return str(value)
+
+def fmt_cost(value, known):
+    if not known:
+        return "n/a"
+    return f"${value:.2f}"
+
+def fmt_ts(value):
+    if not value:
+        return "-"
+    return dt.datetime.fromtimestamp(int(value)).strftime("%Y-%m-%d %H:%M")
+
+def clean(text, width):
+    if text is None:
+        text = ""
+    text = " ".join(str(text).split())
+    if len(text) <= width:
+        return text
+    if width <= 1:
+        return text[:width]
+    return text[: width - 1] + "…"
+
+prices = load_prices(price_file)
+con = sqlite3.connect(db_path)
+con.row_factory = sqlite3.Row
+cur = con.cursor()
+
+base_sql = """
+SELECT id, created_at, updated_at, source, cwd, title, model, reasoning_effort, tokens_used
+FROM threads
+"""
+
+rows = []
+scope = "all"
+if not show_all and target_cwd:
+    rows = cur.execute(base_sql + " WHERE cwd = ? ORDER BY updated_at DESC", (target_cwd,)).fetchall()
+    scope = f"cwd={target_cwd}"
+if not rows:
+    rows = cur.execute(base_sql + " ORDER BY updated_at DESC").fetchall()
+    scope = "all"
+
+total_tokens = 0
+total_cost = 0.0
+known_cost = False
+
+print(f"[ccusage] {db_path}")
+print(f"[Scope] {scope}")
+print(f"[Rows] {len(rows)}")
+
+if not rows:
+    print("[Status] no sessions found")
+    raise SystemExit(0)
+
+session_w = 18
+model_w = 12
+tokens_w = 12
+cost_w = 12
+updated_w = 16
+title_w = 46
+
+print(f"{'Session':{session_w}} {'Model':{model_w}} {'Tokens':>{tokens_w}} {'Cost':>{cost_w}} {'Updated':{updated_w}} Title")
+print(f"{'-' * session_w} {'-' * model_w} {'-' * tokens_w} {'-' * cost_w} {'-' * updated_w} {'-' * title_w}")
+
+for row in rows:
+    session_id = clean(row["id"], session_w)
+    model = clean(row["model"] or "Unknown", model_w)
+    tokens = int(row["tokens_used"] or 0)
+    total_tokens += tokens
+    updated = fmt_ts(row["updated_at"])
+    title = clean(row["title"] or "", title_w)
+    rate = prices.get((row["model"] or "").lower())
+    if rate is not None:
+        cost = tokens * rate / 1_000_000.0
+        total_cost += cost
+        known_cost = True
+    else:
+        cost = None
+    print(f"{session_id:{session_w}} {model:{model_w}} {fmt_tokens(tokens):>{tokens_w}} {fmt_cost(cost, rate is not None):>{cost_w}} {updated:{updated_w}} {title}")
+
+print(f"{'TOTAL':{session_w}} {str(len(rows)) + ' sessions':{model_w}} {fmt_tokens(total_tokens):>{tokens_w}} {fmt_cost(total_cost, known_cost):>{cost_w}} {'-':{updated_w}} {'-'}")
+PY
+}
+
+trap 'printf "\033[?25h"; printf "\n"' INT TERM EXIT
 
 parse_args "$@"
 
 if [ "$WATCH" -eq 1 ]; then
-  render_watch
+  printf '\033[2J\033[H'
+  printf '\033[?25l'
+  while true; do
+    printf '\033[H'
+    render_once
+    sleep "$INTERVAL"
+  done
 else
-  render_summary
+  render_once
 fi

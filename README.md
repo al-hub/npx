@@ -37,5 +37,5 @@ node bin/al.js help
 - `exit`: quit the menu
 
 `monitor` prints a compact dashboard with system, CPU, memory, GPU VRAM, disk, and network info, and refreshes the numbers in place.
-`ccusage` groups JSONL log entries by session, then summarizes input/output/total tokens and cost per session. Cost is taken from `cost_usd` or `usd` when present; otherwise it can be estimated from an optional tab-separated price file at `~/.al/ccusage-prices.tsv` or `CCUSAGE_PRICE_FILE`, with rows in `model<TAB>input_per_million<TAB>output_per_million` format.
-`tokens` is the live watch mode for the same log source. By default both commands read `~/.al/token-usage.log`, or `TOKEN_LOG_FILE` if you set it.
+`ccusage` reads the Codex state database at `~/.codex/state_*.sqlite` and summarizes sessions from the `threads` table. It shows session token counts, model, title, and last update time. Cost is shown when a TSV price file exists at `~/.codex/ccusage-prices.tsv` or `CCUSAGE_PRICE_FILE`; the file should use `model<TAB>usd_per_million_tokens` rows.
+`tokens` is the live watch mode for the same Codex state database. By default both commands scope to the current workspace path and fall back to all sessions if that scope has no rows. Use `--all` to show everything.
