@@ -28,4 +28,4 @@ node bin/al.js help
 - `monitor`: real-time system monitoring
 - `exit`: quit the menu
 
-`monitor` prints a compact 4-line dashboard and refreshes the numbers in place.
+`monitor` prints a compact dashboard with system, CPU, memory, GPU VRAM, disk, and network info, and refreshes the numbers in place.

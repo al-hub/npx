@@ -23,6 +23,21 @@ bytes_to_b() {
   awk -v bytes="${1:-0}" 'BEGIN { printf "%.1f", bytes + 0 }'
 }
 
+join_nonempty() {
+  local out=""
+  local part
+  for part in "$@"; do
+    if [ -n "$part" ]; then
+      if [ -n "$out" ]; then
+        out="$out $part"
+      else
+        out="$part"
+      fi
+    fi
+  done
+  printf '%s\n' "$out"
+}
+
 format_percent() {
   awk -v value="${1:-0}" 'BEGIN { printf "%.1f", value + 0 }'
 }
@@ -95,6 +110,14 @@ cpu_max_ghz() {
   echo "0.0"
 }
 
+cpu_core_count() {
+  lscpu 2>/dev/null | awk -F: '/^Core\(s\) per socket:/ {gsub(/^[ \t]+/, "", $2); print $2; exit}'
+}
+
+cpu_thread_count() {
+  lscpu 2>/dev/null | awk -F: '/^CPU\(s\):/ {gsub(/^[ \t]+/, "", $2); print $2; exit}'
+}
+
 mem_usage_info() {
   local total available used usage
   total="$(awk '/MemTotal:/ {print $2 * 1024; exit}' /proc/meminfo)"
@@ -108,6 +131,22 @@ mem_usage_info() {
     }
   }')"
   printf '%s|%s|%s|%s\n' "$usage" "$used" "$total" "Unknown"
+}
+
+system_vendor() {
+  cat /sys/devices/virtual/dmi/id/sys_vendor 2>/dev/null || echo "Unknown"
+}
+
+system_product() {
+  cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || echo "Unknown"
+}
+
+board_vendor() {
+  cat /sys/devices/virtual/dmi/id/board_vendor 2>/dev/null || echo "Unknown"
+}
+
+board_name() {
+  cat /sys/devices/virtual/dmi/id/board_name 2>/dev/null || echo "Unknown"
 }
 
 root_disk_info() {
@@ -126,6 +165,21 @@ root_disk_info() {
   fi
 
   printf '%s|%s|%s|%s|%s|%s\n' "${model:-Unknown}" "${usep:-0}" "${used:-0}" "${size:-0}" "${fs_type:-unknown}" "${source:-unknown}"
+}
+
+gpu_info() {
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi --query-gpu=name,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null | awk -F', ' 'NR == 1 {
+      used = $2 + 0
+      total = $3 + 0
+      usage = (total > 0) ? (100 * used / total) : 0
+      printf "%s|%.1f|%s|%s\n", $1, usage, used, total
+      exit
+    }'
+    return
+  fi
+
+  printf 'Unknown|0.0|0|0\n'
 }
 
 net_info() {
@@ -159,17 +213,23 @@ cpu_sample() {
 }
 
 render_once() {
-  local cpu_model_name cpu_usage cpu_cur cpu_max
+  local system_name board_name_value cpu_model_name cpu_usage cpu_cur cpu_max cpu_cores cpu_threads
   local mem_usage mem_used mem_total mem_model
+  local gpu_model_name gpu_usage gpu_used gpu_total
   local disk_model disk_usage disk_used disk_total disk_fs disk_source
   local net_iface net_rx1 net_tx1 net_rx2 net_tx2 net_rx_rate net_tx_rate
   local cpu_t1 cpu_i1 cpu_t2 cpu_i2 net_before net_after
 
+  system_name="$(join_nonempty "$(system_vendor)" "$(system_product)")"
+  board_name_value="$(join_nonempty "$(board_vendor)" "$(board_name)")"
   cpu_model_name="$(cpu_model)"
   cpu_cur="$(cpu_current_ghz)"
   cpu_max="$(cpu_max_ghz)"
+  cpu_cores="$(cpu_core_count)"
+  cpu_threads="$(cpu_thread_count)"
 
   IFS='|' read -r mem_usage mem_used mem_total mem_model < <(mem_usage_info)
+  IFS='|' read -r gpu_model_name gpu_usage gpu_used gpu_total < <(gpu_info)
   IFS='|' read -r disk_model disk_usage disk_used disk_total disk_fs disk_source < <(root_disk_info)
   IFS='|' read -r cpu_t1 cpu_i1 < <(cpu_sample)
   IFS='|' read -r net_iface net_rx1 net_tx1 < <(net_info)
@@ -195,8 +255,15 @@ render_once() {
     net_tx_rate=0
   fi
 
+  printf '[System] %s / %s\n' "${system_name:-Unknown}" "${board_name_value:-Unknown}"
   printf '[CPU] %s %5.1f%% (%3.1f GHz / %3.1f GHz)\n' "${cpu_model_name:-Unknown}" "$(format_percent "$cpu_usage")" "$cpu_cur" "$cpu_max"
+  printf '[CPU-Cores] %sC / %sT\n' "${cpu_cores:-0}" "${cpu_threads:-0}"
   printf '[Memory] %s %5.1f%% (%3.1f GB / %3.1fGB)\n' "${mem_model:-Unknown}" "$(format_percent "$mem_usage")" "$(bytes_to_gb "$mem_used")" "$(bytes_to_gb "$mem_total")"
+  if [ "${gpu_total:-0}" -gt 0 ]; then
+    printf '[GPU] %s %5.1f%% (VRAM %s MiB / %s MiB)\n' "${gpu_model_name:-Unknown}" "$(format_percent "$gpu_usage")" "${gpu_used:-0}" "${gpu_total:-0}"
+  else
+    printf '[GPU] %s VRAM unavailable\n' "${gpu_model_name:-Unknown}"
+  fi
   printf '[SSD] %s %3d%% (%3.1fGB / %4.0fGB)\n' "${disk_model:-Unknown}" "$(format_int_percent "$disk_usage")" "$(bytes_to_gb "$disk_used")" "$(bytes_to_gb_whole "$disk_total")"
   printf '[Nework] %s rx (%5.1f B/S), tx (%5.1f B/s)\n' "${net_iface:-Unknown}" "$(bytes_to_b "$net_rx_rate")" "$(bytes_to_b "$net_tx_rate")"
 }
