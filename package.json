@@ -1,0 +1,8 @@
+{
+  "name": "al-hub-npx",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "al": "./bin/al.js"
+  }
+}
