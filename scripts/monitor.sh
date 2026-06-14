@@ -237,10 +237,10 @@ cpu_sample() {
 
 render_once() {
   local system_name board_name_value bios_name cpu_model_name cpu_usage cpu_cur cpu_max cpu_cores cpu_threads
-  local mem_usage mem_used mem_total mem_model
-  local gpu_model_name gpu_usage gpu_used gpu_total
-  local disk_model disk_usage disk_used disk_total disk_fs disk_source
-  local net_iface net_rx1 net_tx1 net_rx2 net_tx2 net_rx_rate net_tx_rate
+  local mem_usage mem_used mem_total mem_model mem_used_gb mem_total_gb
+  local gpu_model_name gpu_usage gpu_used gpu_total gpu_used_mib gpu_total_mib
+  local disk_model disk_usage disk_used disk_total disk_fs disk_source disk_used_gb disk_total_gb
+  local net_iface net_rx1 net_tx1 net_rx2 net_tx2 net_rx_rate net_tx_rate net_rx_rate_fmt net_tx_rate_fmt
   local cpu_t1 cpu_i1 cpu_t2 cpu_i2 net_before net_after
 
   system_name="$(join_nonempty "$(system_vendor)" "$(system_product)")"
@@ -279,22 +279,27 @@ render_once() {
     net_tx_rate=0
   fi
 
+  mem_used_gb="$(bytes_to_gb "$mem_used")"
+  mem_total_gb="$(bytes_to_gb "$mem_total")"
+  gpu_used_mib="${gpu_used:-0}"
+  gpu_total_mib="${gpu_total:-0}"
+  disk_used_gb="$(bytes_to_gb "$disk_used")"
+  disk_total_gb="$(bytes_to_gb_whole "$disk_total")"
+  net_rx_rate_fmt="$(bytes_to_b "$net_rx_rate")"
+  net_tx_rate_fmt="$(bytes_to_b "$net_tx_rate")"
+
   printf '[System] %s / %s\n' "${system_name:-Unknown}" "${board_name_value:-Unknown}"
   printf '[BIOS] %s\n' "${bios_name:-Unknown}"
   printf '[CPU] %s %5.1f%% (%3.1f GHz / %3.1f GHz)\n' "${cpu_model_name:-Unknown}" "$(format_percent "$cpu_usage")" "$cpu_cur" "$cpu_max"
-  if awk -v usage="$cpu_usage" 'BEGIN { exit !(usage >= 30) }'; then
-    printf '[Cores] physical %5.1f%% / %sC, threads %5.1f%% / %sT\n' "$(format_percent "$cpu_usage")" "${cpu_cores:-0}" "$(format_percent "$cpu_usage")" "${cpu_threads:-0}"
-  else
-    printf '[Cores] physical / %sC, threads / %sT\n' "${cpu_cores:-0}" "${cpu_threads:-0}"
-  fi
-  printf '[Memory] %s %5.1f%% (%3.1f GB / %3.1fGB)\n' "${mem_model:-Unknown}" "$(format_percent "$mem_usage")" "$(bytes_to_gb "$mem_used")" "$(bytes_to_gb "$mem_total")"
+  printf '[Cores] physical %5.1f%% / %sC, threads %5.1f%% / %sT\n' "$(format_percent "$cpu_usage")" "${cpu_cores:-0}" "$(format_percent "$cpu_usage")" "${cpu_threads:-0}"
+  printf '[Memory] %s %5.1f%% (%s GB / %sGB)\n' "${mem_model:-Unknown}" "$(format_percent "$mem_usage")" "$mem_used_gb" "$mem_total_gb"
   if [ "${gpu_total:-0}" -gt 0 ]; then
-    printf '[GPU] %s %5.1f%% (VRAM %s MiB / %s MiB)\n' "${gpu_model_name:-Unknown}" "$(format_percent "$gpu_usage")" "${gpu_used:-0}" "${gpu_total:-0}"
+    printf '[GPU] %s %5.1f%% (VRAM %s MiB / %s MiB)\n' "${gpu_model_name:-Unknown}" "$(format_percent "$gpu_usage")" "$gpu_used_mib" "$gpu_total_mib"
   else
     printf '[GPU] %s VRAM unavailable\n' "${gpu_model_name:-Unknown}"
   fi
-  printf '[SSD] %s %3d%% (%3.1fGB / %4.0fGB)\n' "${disk_model:-Unknown}" "$(format_int_percent "$disk_usage")" "$(bytes_to_gb "$disk_used")" "$(bytes_to_gb_whole "$disk_total")"
-  printf '[Network] %s rx (%5.1f B/S), tx (%5.1f B/s)\n' "${net_iface:-Unknown}" "$(bytes_to_b "$net_rx_rate")" "$(bytes_to_b "$net_tx_rate")"
+  printf '[SSD] %s %3d%% (%sGB / %sGB)\n' "${disk_model:-Unknown}" "$(format_int_percent "$disk_usage")" "$disk_used_gb" "$disk_total_gb"
+  printf '[Network] %s rx (%s B/S), tx (%s B/s)\n' "${net_iface:-Unknown}" "$net_rx_rate_fmt" "$net_tx_rate_fmt"
 }
 
 trap 'show_cursor; printf "\n"' INT TERM EXIT
