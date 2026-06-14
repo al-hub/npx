@@ -27,3 +27,5 @@ node bin/al.js help
 - `setup`: create default folders
 - `monitor`: real-time system monitoring
 - `exit`: quit the menu
+
+`monitor` prints a compact 4-line dashboard and refreshes the numbers in place.
