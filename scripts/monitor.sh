@@ -282,7 +282,11 @@ render_once() {
   printf '[System] %s / %s\n' "${system_name:-Unknown}" "${board_name_value:-Unknown}"
   printf '[BIOS] %s\n' "${bios_name:-Unknown}"
   printf '[CPU] %s %5.1f%% (%3.1f GHz / %3.1f GHz)\n' "${cpu_model_name:-Unknown}" "$(format_percent "$cpu_usage")" "$cpu_cur" "$cpu_max"
-  printf '[CPU-Cores] %sC / %sT\n' "${cpu_cores:-0}" "${cpu_threads:-0}"
+  if awk -v usage="$cpu_usage" 'BEGIN { exit !(usage >= 30) }'; then
+    printf '[Cores] physical %5.1f%% / %sC, threads %5.1f%% / %sT\n' "$(format_percent "$cpu_usage")" "${cpu_cores:-0}" "$(format_percent "$cpu_usage")" "${cpu_threads:-0}"
+  else
+    printf '[Cores] physical / %sC, threads / %sT\n' "${cpu_cores:-0}" "${cpu_threads:-0}"
+  fi
   printf '[Memory] %s %5.1f%% (%3.1f GB / %3.1fGB)\n' "${mem_model:-Unknown}" "$(format_percent "$mem_usage")" "$(bytes_to_gb "$mem_used")" "$(bytes_to_gb "$mem_total")"
   if [ "${gpu_total:-0}" -gt 0 ]; then
     printf '[GPU] %s %5.1f%% (VRAM %s MiB / %s MiB)\n' "${gpu_model_name:-Unknown}" "$(format_percent "$gpu_usage")" "${gpu_used:-0}" "${gpu_total:-0}"
