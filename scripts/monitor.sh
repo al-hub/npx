@@ -11,6 +11,20 @@ show_cursor() {
   printf '\033[?25h'
 }
 
+wait_or_quit() {
+  local elapsed=0
+  local key
+  while awk -v elapsed="$elapsed" -v interval="$INTERVAL" 'BEGIN { exit !(elapsed < interval) }'; do
+    if IFS= read -rsn1 -t 0.1 key; then
+      case "$key" in
+        q|Q) return 1 ;;
+      esac
+    fi
+    elapsed="$(awk -v elapsed="$elapsed" 'BEGIN { printf "%.1f", elapsed + 0.1 }')"
+  done
+  return 0
+}
+
 bytes_to_gb() {
   awk -v bytes="${1:-0}" 'BEGIN { printf "%.1f", bytes / 1024 / 1024 / 1024 }'
 }
@@ -257,7 +271,7 @@ render_once() {
   IFS='|' read -r disk_model disk_usage disk_used disk_total disk_fs disk_source < <(root_disk_info)
   IFS='|' read -r cpu_t1 cpu_i1 < <(cpu_sample)
   IFS='|' read -r net_iface net_rx1 net_tx1 < <(net_info)
-  sleep "$INTERVAL"
+  wait_or_quit || return 1
   IFS='|' read -r cpu_t2 cpu_i2 < <(cpu_sample)
   IFS='|' read -r _ net_rx2 net_tx2 < <(net_info)
 
@@ -300,6 +314,7 @@ render_once() {
   fi
   printf '[SSD] %s %3d%% (%sGB / %sGB)\n' "${disk_model:-Unknown}" "$(format_int_percent "$disk_usage")" "$disk_used_gb" "$disk_total_gb"
   printf '[Network] %s rx (%s B/S), tx (%s B/s)\n' "${net_iface:-Unknown}" "$net_rx_rate_fmt" "$net_tx_rate_fmt"
+  printf '[Quit] press q\n'
 }
 
 trap 'show_cursor; printf "\n"' INT TERM EXIT
@@ -309,5 +324,5 @@ hide_cursor
 
 while true; do
   printf '\033[H'
-  render_once
+  render_once || break
 done

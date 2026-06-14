@@ -250,6 +250,20 @@ print(f"{'TOTAL':{session_w}} {str(len(rows)) + ' sessions':{model_w}} {fmt_toke
 PY
 }
 
+wait_or_quit() {
+  local elapsed=0
+  local key
+  while awk -v elapsed="$elapsed" -v interval="$INTERVAL" 'BEGIN { exit !(elapsed < interval) }'; do
+    if IFS= read -rsn1 -t 0.1 key; then
+      case "$key" in
+        q|Q) return 1 ;;
+      esac
+    fi
+    elapsed="$(awk -v elapsed="$elapsed" 'BEGIN { printf "%.1f", elapsed + 0.1 }')"
+  done
+  return 0
+}
+
 parse_args "$@"
 
 if [ "$WATCH" -eq 1 ]; then
@@ -259,7 +273,8 @@ if [ "$WATCH" -eq 1 ]; then
   while true; do
     printf '\033[H'
     render_once
-    sleep "$INTERVAL"
+    printf '[Quit] press q\n'
+    wait_or_quit || break
   done
 else
   render_once

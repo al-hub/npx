@@ -183,7 +183,24 @@ print(f"{'Tokens':>10} {'Updated':19} Title")
 print(f"{'-' * 10} {'-' * 19} {'-' * 48}")
 for row in rows[:5]:
     print(f"{fmt_tokens(row['tokens_used']):>10} {fmt_ts(row['updated_at']):19} {clean(row['title'], 48)}")
+
+print("")
+print("[Quit] press q")
 PY
+}
+
+wait_or_quit() {
+  local elapsed=0
+  local key
+  while awk -v elapsed="$elapsed" -v interval="$INTERVAL" 'BEGIN { exit !(elapsed < interval) }'; do
+    if IFS= read -rsn1 -t 0.1 key; then
+      case "$key" in
+        q|Q) return 1 ;;
+      esac
+    fi
+    elapsed="$(awk -v elapsed="$elapsed" 'BEGIN { printf "%.1f", elapsed + 0.1 }')"
+  done
+  return 0
 }
 
 trap 'printf "\033[?25h"; printf "\n"' INT TERM EXIT
@@ -196,5 +213,5 @@ printf '\033[?25l'
 while true; do
   printf '\033[H'
   render_once
-  sleep "$INTERVAL"
+  wait_or_quit || break
 done
