@@ -12,13 +12,15 @@ Usage:
   npx github:al-hub/npx doctor
   npx github:al-hub/npx setup
   npx github:al-hub/npx monitor
+  npx github:al-hub/npx ccusage
   npx github:al-hub/npx tokens
 
 Commands:
   doctor   환경 점검
   setup    기본 개발 폴더 생성
   monitor  시스템 모니터링
-  tokens   토큰 사용량 모니터링
+  ccusage  세션별 토큰/비용 요약
+  tokens   실시간 토큰 모니터링
 EOF
 }
 
@@ -28,8 +30,9 @@ run_menu() {
   echo "1) doctor   환경 점검"
   echo "2) setup    기본 개발 폴더 생성"
   echo "3) monitor  시스템 모니터링"
-  echo "4) tokens   토큰 사용량 모니터링"
-  echo "5) exit"
+  echo "4) ccusage  세션별 요약"
+  echo "5) tokens   실시간 모니터링"
+  echo "6) exit"
   echo ""
 
   read -rp "선택하세요: " choice
@@ -38,13 +41,15 @@ run_menu() {
     1) bash "$ROOT_DIR/scripts/doctor.sh" ;;
     2) bash "$ROOT_DIR/scripts/setup.sh" ;;
     3) bash "$ROOT_DIR/scripts/monitor.sh" ;;
-    4) bash "$ROOT_DIR/scripts/tokens.sh" ;;
-    5) exit 0 ;;
+    4) bash "$ROOT_DIR/scripts/ccusage.sh" ;;
+    5) bash "$ROOT_DIR/scripts/tokens.sh" ;;
+    6) exit 0 ;;
     *) echo "잘못된 선택입니다."; exit 1 ;;
   esac
 }
 
 cmd="${1:-}"
+args=("${@:2}")
 
 case "$cmd" in
   "")
@@ -54,13 +59,19 @@ case "$cmd" in
     show_help
     ;;
   doctor)
-    bash "$ROOT_DIR/scripts/doctor.sh"
+    bash "$ROOT_DIR/scripts/doctor.sh" "${args[@]}"
     ;;
   setup)
-    bash "$ROOT_DIR/scripts/setup.sh"
+    bash "$ROOT_DIR/scripts/setup.sh" "${args[@]}"
     ;;
   monitor)
-    bash "$ROOT_DIR/scripts/monitor.sh"
+    bash "$ROOT_DIR/scripts/monitor.sh" "${args[@]}"
+    ;;
+  ccusage)
+    bash "$ROOT_DIR/scripts/ccusage.sh" "${args[@]}"
+    ;;
+  tokens)
+    bash "$ROOT_DIR/scripts/tokens.sh" "${args[@]}"
     ;;
   *)
     echo "Unknown command: $cmd"
