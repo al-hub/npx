@@ -8,6 +8,7 @@ Minimal `npx` launcher for `al-hub/npx`.
 npx github:al-hub/npx
 npx github:al-hub/npx doctor
 npx github:al-hub/npx setup
+npx github:al-hub/npx monitor
 ```
 
 Local run:
@@ -16,6 +17,7 @@ Local run:
 node bin/al.js
 node bin/al.js doctor
 node bin/al.js setup
+node bin/al.js monitor
 node bin/al.js help
 ```
 
@@ -23,4 +25,5 @@ node bin/al.js help
 
 - `doctor`: environment check
 - `setup`: create default folders
+- `monitor`: real-time system monitoring
 - `exit`: quit the menu

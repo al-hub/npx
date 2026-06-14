@@ -11,10 +11,12 @@ Usage:
   npx github:al-hub/npx
   npx github:al-hub/npx doctor
   npx github:al-hub/npx setup
+  npx github:al-hub/npx monitor
 
 Commands:
   doctor   환경 점검
   setup    기본 개발 폴더 생성
+  monitor  시스템 모니터링
 EOF
 }
 
@@ -23,7 +25,8 @@ run_menu() {
   echo ""
   echo "1) doctor   환경 점검"
   echo "2) setup    기본 개발 폴더 생성"
-  echo "3) exit"
+  echo "3) monitor  시스템 모니터링"
+  echo "4) exit"
   echo ""
 
   read -rp "선택하세요: " choice
@@ -31,7 +34,8 @@ run_menu() {
   case "$choice" in
     1) bash "$ROOT_DIR/scripts/doctor.sh" ;;
     2) bash "$ROOT_DIR/scripts/setup.sh" ;;
-    3) exit 0 ;;
+    3) bash "$ROOT_DIR/scripts/monitor.sh" ;;
+    4) exit 0 ;;
     *) echo "잘못된 선택입니다."; exit 1 ;;
   esac
 }
@@ -50,6 +54,9 @@ case "$cmd" in
     ;;
   setup)
     bash "$ROOT_DIR/scripts/setup.sh"
+    ;;
+  monitor)
+    bash "$ROOT_DIR/scripts/monitor.sh"
     ;;
   *)
     echo "Unknown command: $cmd"
