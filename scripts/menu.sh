@@ -19,8 +19,8 @@ Commands:
   doctor   환경 점검
   setup    기본 개발 폴더 생성
   monitor  시스템 모니터링
-  ccusage  세션별 토큰/비용 요약
-  tokens   실시간 토큰 모니터링
+  ccusage  세션별 토큰/비용 표
+  tokens   현재 세션 토큰 실시간 모니터
 EOF
 }
 
@@ -30,8 +30,8 @@ run_menu() {
   echo "1) doctor   환경 점검"
   echo "2) setup    기본 개발 폴더 생성"
   echo "3) monitor  시스템 모니터링"
-  echo "4) ccusage  세션별 요약"
-  echo "5) tokens   실시간 모니터링"
+  echo "4) ccusage  세션별 토큰/비용 표"
+  echo "5) tokens   현재 세션 토큰 실시간"
   echo "6) exit"
   echo ""
 

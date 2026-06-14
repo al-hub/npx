@@ -250,11 +250,10 @@ print(f"{'TOTAL':{session_w}} {str(len(rows)) + ' sessions':{model_w}} {fmt_toke
 PY
 }
 
-trap 'printf "\033[?25h"; printf "\n"' INT TERM EXIT
-
 parse_args "$@"
 
 if [ "$WATCH" -eq 1 ]; then
+  trap 'printf "\033[?25h"; printf "\n"' INT TERM EXIT
   printf '\033[2J\033[H'
   printf '\033[?25l'
   while true; do

@@ -32,10 +32,10 @@ node bin/al.js help
 - `doctor`: environment check
 - `setup`: create default folders
 - `monitor`: real-time system monitoring
-- `ccusage`: session summary for token usage and cost
-- `tokens`: real-time token usage monitoring
+- `ccusage`: session table for token usage and cost
+- `tokens`: live token monitor for the current session/workspace
 - `exit`: quit the menu
 
 `monitor` prints a compact dashboard with system, CPU, memory, GPU VRAM, disk, and network info, and refreshes the numbers in place.
 `ccusage` reads the Codex state database at `~/.codex/state_*.sqlite` and summarizes sessions from the `threads` table. It shows session token counts, model, title, and last update time. Cost is shown when a TSV price file exists at `~/.codex/ccusage-prices.tsv` or `CCUSAGE_PRICE_FILE`; the file should use `model<TAB>usd_per_million_tokens` rows.
-`tokens` is the live watch mode for the same Codex state database. By default both commands scope to the current workspace path and fall back to all sessions if that scope has no rows. Use `--all` to show everything.
+`tokens` is a live counter view for the same Codex state database. It focuses on the latest session, total tokens in scope, and recent sessions so it is visually different from the `ccusage` table. By default both commands scope to the current workspace path and fall back to all sessions if that scope has no rows. Use `--all` to show everything.
