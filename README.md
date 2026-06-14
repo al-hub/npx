@@ -1,6 +1,18 @@
 # al-hub npx
 
-Minimal `npx` launcher for `al-hub/npx`.
+`al-hub/npx`는 `npx github:al-hub/npx`로 바로 실행할 수 있는 개인용 로컬 운영 런처다.
+
+목표는 복잡한 CLI 프레임워크를 만들지 않고, 자주 쓰는 점검/설정/모니터링 작업을 작은 Bash 스크립트로 묶는 것이다. Node.js는 `npx` 진입점 역할만 하고, 실제 기능은 `scripts/*.sh`에서 처리한다.
+
+## Purpose
+
+이 프로젝트의 목적은 세 가지로 구분한다.
+
+- `bootstrap`: 새 환경에서 기본 폴더와 개발 환경을 빠르게 준비한다.
+- `diagnostics`: Node, Git, WSL, API 키 등 현재 환경 상태를 점검한다.
+- `observability`: 시스템 리소스와 Codex 세션 토큰 사용량을 터미널에서 바로 확인한다.
+
+현재는 개인용 워크플로우에 맞춘 최소 구현을 우선한다. 이후 업무용 또는 팀용으로 확장할 수 있도록 명령 경계와 문서 구조만 분리해 둔다.
 
 ## Usage
 
@@ -29,14 +41,71 @@ node bin/al.js help
 
 ## Commands
 
-- `doctor`: environment check
-- `setup`: create default folders
-- `monitor`: real-time system monitoring
-- `ccusage`: session table for token usage and cost
-- `tokens`: live token monitor for the current session/workspace
-- `exit`: quit the menu
+- `doctor`: Node, npm, npx, Git, OS, WSL, API 키 상태를 점검한다.
+- `setup`: 기본 개발 폴더를 생성한다.
+- `monitor`: CPU, 메모리, GPU, 디스크, 네트워크 상태를 실시간 표시한다.
+- `ccusage`: Codex 세션별 토큰/비용 요약 표를 출력한다.
+- `tokens`: 현재 워크스페이스의 최신 Codex 세션 토큰을 실시간 표시한다.
+- `exit`: 메뉴를 종료한다.
 
-`monitor` prints a compact dashboard with system, CPU, memory, GPU VRAM, disk, and network info, and refreshes the numbers in place.
-`ccusage` reads the Codex state database at `~/.codex/state_*.sqlite` and summarizes sessions from the `threads` table. It shows session token counts, model, title, and last update time. Cost is shown when a TSV price file exists at `~/.codex/ccusage-prices.tsv` or `CCUSAGE_PRICE_FILE`; the file should use `model<TAB>usd_per_million_tokens` rows.
-`tokens` is a live counter view for the same Codex state database. It focuses on the latest session, total tokens in scope, and recent sessions so it is visually different from the `ccusage` table. By default both commands scope to the current workspace path and fall back to all sessions if that scope has no rows. Use `--all` to show everything.
 Live screens such as `monitor`, `ccusage --watch`, and `tokens` exit when you press `q`.
+
+## Token Usage
+
+`ccusage`와 `tokens`는 Codex 상태 데이터베이스를 읽는다.
+
+기본 탐색 경로:
+
+```txt
+~/.codex/state_*.sqlite
+```
+
+동작 방식:
+
+- `ccusage`: `threads` 테이블을 읽어 세션별 `tokens_used`, 모델, 제목, 갱신 시간을 표로 요약한다.
+- `tokens`: 같은 데이터를 현재 워크스페이스 기준으로 읽고, 최신 세션 중심의 live counter로 표시한다.
+- 기본적으로 현재 `cwd`와 같은 워크스페이스 세션만 보여주며, 없으면 전체 세션으로 fallback한다.
+- `--all` 옵션을 주면 전체 세션을 표시한다.
+
+비용 표시:
+
+- 기본 DB에는 모델별 가격 정보가 없으므로 비용은 `n/a`일 수 있다.
+- 비용을 표시하려면 `~/.codex/ccusage-prices.tsv` 또는 `CCUSAGE_PRICE_FILE`을 사용한다.
+- 파일 형식은 `model<TAB>usd_per_million_tokens`다.
+
+예시:
+
+```txt
+gpt-5.5	10.00
+gpt-5.4-mini	1.00
+```
+
+## Structure
+
+```txt
+npx/
+├─ package.json
+├─ bin/
+│  └─ al.js
+├─ scripts/
+│  ├─ menu.sh
+│  ├─ doctor.sh
+│  ├─ setup.sh
+│  ├─ monitor.sh
+│  ├─ ccusage.sh
+│  └─ tokens.sh
+└─ docs/
+   └─ ROADMAP.md
+```
+
+## Design Principles
+
+- `bin/al.js`는 thin wrapper로 유지한다.
+- 명령 하나는 `scripts/*.sh` 하나로 추가한다.
+- 외부 npm dependency는 추가하지 않는다.
+- 개인용 기본값을 우선하되, 환경변수와 옵션으로 확장 가능하게 둔다.
+- live 화면은 공통적으로 `q`로 종료한다.
+
+## Roadmap
+
+향후 확장 계획은 [docs/ROADMAP.md](docs/ROADMAP.md)를 참고한다.
