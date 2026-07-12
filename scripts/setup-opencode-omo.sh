@@ -179,13 +179,29 @@ ensure_bun() {
   case "$(uname -s)" in
     Linux*|Darwin*|CYGWIN*|MINGW*|MSYS*)
       if ! command -v unzip >/dev/null 2>&1; then
-        echo "[setup-opencode-omo] ERROR: 'unzip' required to install bun" >&2
-        echo "  Install unzip first:" >&2
-        echo "    Ubuntu/Debian: sudo apt-get install -y unzip" >&2
-        echo "    Alpine: apk add unzip" >&2
-        echo "    Fedora: sudo dnf install -y unzip" >&2
-        echo "    macOS: brew install unzip" >&2
-        return 1
+        echo "[setup-opencode-omo] unzip not found, attempting to install..."
+        if command -v apt-get >/dev/null 2>&1; then
+          if [ "$EUID" -eq 0 ]; then
+            apt-get update -qq && apt-get install -y unzip
+          else
+            echo "[setup-opencode-omo] Need sudo to install unzip. Run: sudo apt-get install -y unzip" >&2
+            return 1
+          fi
+        elif command -v apk >/dev/null 2>&1; then
+          apk add unzip
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf install -y unzip
+        elif command -v brew >/dev/null 2>&1; then
+          brew install unzip
+        else
+          echo "[setup-opencode-omo] ERROR: cannot auto-install unzip" >&2
+          echo "  Install manually:" >&2
+          echo "    Ubuntu/Debian: sudo apt-get install -y unzip" >&2
+          echo "    Alpine: apk add unzip" >&2
+          echo "    Fedora: sudo dnf install -y unzip" >&2
+          echo "    macOS: brew install unzip" >&2
+          return 1
+        fi
       fi
 
       if command -v curl >/dev/null 2>&1; then
