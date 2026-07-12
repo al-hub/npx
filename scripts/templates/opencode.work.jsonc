@@ -1,0 +1,88 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": "notify",
+  "theme": "system",
+  "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "permission": {
+    "*": "ask",
+    "bash": {
+      "*": "ask",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "grep *": "allow",
+      "find *": "allow",
+      "ls *": "allow",
+      "cat *": "allow",
+      "npm test*": "allow",
+      "npm run lint*": "allow"
+    },
+    "edit": "ask",
+    "write": "ask",
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow",
+      "*.pem": "deny",
+      "*.key": "deny",
+      "*.crt": "deny",
+      "*.pfx": "deny",
+      "*.p12": "deny",
+      "secrets/**": "deny",
+      "**/credentials/**": "deny"
+    },
+    "external_directory": {}
+  },
+  "provider": {
+    "anthropic": {
+      "options": {
+        "apiKey": "{env:ANTHROPIC_API_KEY}",
+        "timeout": 300000,
+        "chunkTimeout": 30000,
+        "setCacheKey": true
+      }
+    },
+    "openai": {
+      "options": {
+        "apiKey": "{env:OPENAI_API_KEY}"
+      }
+    }
+  },
+  "disabled_providers": ["gemini", "openrouter", "groq", "cerebras"],
+  "agent": {
+    "code-reviewer": {
+      "description": "Reviews code for best practices and potential issues",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "You are a code reviewer. Focus on security, performance, and maintainability.",
+      "tools": {
+        "write": false,
+        "edit": false
+      }
+    }
+  },
+  "default_agent": "plan",
+  "lsp": true,
+  "formatter": {
+    "prettier": {
+      "disabled": false
+    }
+  },
+  "snapshot": true,
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 15000
+  },
+  "watcher": {
+    "ignore": ["node_modules/**", "dist/**", ".git/**", "build/**", "*.min.js", "coverage/**"]
+  },
+  "share": "disabled",
+  "server": {
+    "port": 4096,
+    "hostname": "127.0.0.1",
+    "mdns": false,
+    "cors": []
+  }
+}

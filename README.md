@@ -20,6 +20,7 @@
 npx github:al-hub/npx
 npx github:al-hub/npx doctor
 npx github:al-hub/npx setup
+npx github:al-hub/npx setup-fzf
 npx github:al-hub/npx monitor
 npx github:al-hub/npx ccusage
 npx github:al-hub/npx ccusage --watch
@@ -32,6 +33,7 @@ Local run:
 node bin/al.js
 node bin/al.js doctor
 node bin/al.js setup
+node bin/al.js setup-fzf
 node bin/al.js monitor
 node bin/al.js ccusage
 node bin/al.js ccusage --watch
@@ -43,6 +45,7 @@ node bin/al.js help
 
 - `doctor`: Node, npm, npx, Git, OS, WSL, API 키 상태를 점검한다.
 - `setup`: 기본 개발 폴더를 생성한다.
+- `setup-fzf`: fzf 공식 저장소(git clone + install)로 설치/업데이트한다.
 - `monitor`: CPU, 메모리, GPU, 디스크, 네트워크 상태를 실시간 표시한다.
 - `ccusage`: Codex 세션별 토큰/비용 요약 표를 출력한다.
 - `tokens`: 현재 워크스페이스의 최신 Codex 세션 토큰을 실시간 표시한다.
