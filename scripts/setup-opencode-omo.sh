@@ -168,9 +168,54 @@ for var in OPENAI GEMINI COPILOT OPENCODE_ZEN ZAI_CODING_PLAN OPENCODE_GO KIMI_F
   fi
 done
 
-if ! command -v bun >/dev/null 2>&1; then
-  echo "[setup-opencode-omo] ERROR: bun is required but not installed"
-  echo "  Install: curl -fsSL https://bun.sh/install | bash"
+ensure_bun() {
+  if command -v bun >/dev/null 2>&1; then
+    echo "[setup-opencode-omo] bun found: $(bun --version)"
+    return 0
+  fi
+
+  echo "[setup-opencode-omo] bun not found, installing..."
+
+  case "$(uname -s)" in
+    Linux*|Darwin*|CYGWIN*|MINGW*|MSYS*)
+      if ! command -v unzip >/dev/null 2>&1; then
+        echo "[setup-opencode-omo] ERROR: 'unzip' required to install bun" >&2
+        echo "  Install unzip first:" >&2
+        echo "    Ubuntu/Debian: sudo apt-get install -y unzip" >&2
+        echo "    Alpine: apk add unzip" >&2
+        echo "    Fedora: sudo dnf install -y unzip" >&2
+        echo "    macOS: brew install unzip" >&2
+        return 1
+      fi
+
+      if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://bun.sh/install | bash
+      elif command -v wget >/dev/null 2>&1; then
+        wget -qO- https://bun.sh/install | bash
+      else
+        echo "[setup-opencode-omo] ERROR: curl or wget required to install bun" >&2
+        return 1
+      fi
+      ;;
+    *)
+      echo "[setup-opencode-omo] ERROR: unsupported OS for auto-install" >&2
+      echo "  Install manually: https://bun.sh" >&2
+      return 1
+      ;;
+  esac
+
+  export PATH="$HOME/.bun/bin:$PATH"
+  if command -v bun >/dev/null 2>&1; then
+    echo "[setup-opencode-omo] bun installed: $(bun --version)"
+    return 0
+  else
+    echo "[setup-opencode-omo] ERROR: bun installation failed" >&2
+    echo "  Restart shell or run: export PATH=\"\$HOME/.bun/bin:\$PATH\"" >&2
+    return 1
+  fi
+}
+
+if ! ensure_bun; then
   exit 1
 fi
 
