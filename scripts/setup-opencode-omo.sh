@@ -181,16 +181,11 @@ ensure_bun() {
       if ! command -v unzip >/dev/null 2>&1; then
         echo "[setup-opencode-omo] unzip not found, attempting to install..."
         if command -v apt-get >/dev/null 2>&1; then
-          if [ "$EUID" -eq 0 ]; then
-            apt-get update -qq && apt-get install -y unzip
-          else
-            echo "[setup-opencode-omo] Need sudo to install unzip. Run: sudo apt-get install -y unzip" >&2
-            return 1
-          fi
+          sudo apt-get update -qq && sudo apt-get install -y unzip
         elif command -v apk >/dev/null 2>&1; then
-          apk add unzip
+          sudo apk add unzip
         elif command -v dnf >/dev/null 2>&1; then
-          dnf install -y unzip
+          sudo dnf install -y unzip
         elif command -v brew >/dev/null 2>&1; then
           brew install unzip
         else
